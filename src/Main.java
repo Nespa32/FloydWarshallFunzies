@@ -3,45 +3,118 @@ import java.util.Scanner;
 import java.lang.Math;
 import java.lang.Thread;
 import java.lang.System;
+import java.io.File;
+import java.io.FileNotFoundException;
 
 public class Main
 {
     public static void main(String[] args)
     {
-        Scanner reader = new Scanner(System.in);
+        // missing matrix file arg
+        if (args.length == 0)
+            PrintUsageAndExit();
 
-        IntMatrix mat = new IntMatrix(reader);
+        // parse command line arguments
+        String inMatFileStr = args[0];
+        String testMatFileStr = "";
+        boolean matrixPrint = true;
+        // options
+        for (int i = 1; i < args.length; ++i)
+        {
+            String s = args[i];
+            if (s.startsWith("--test"))
+            {
+                i += 1; // get test file from next arg
+                if (i >= args.length) // must have another argument
+                    PrintUsageAndExit();
 
-        System.out.println("[INITIAL MATRIX]");
-        System.out.print(mat.ToString());
+                testMatFileStr = args[i];
+            }
+            else if (s.startsWith("--no-matrix-print"))
+                matrixPrint = false;
+            else
+                PrintUsageAndExit();
+        }
 
-        System.out.println("[FINAL MATRIX]");
-        System.out.print(mat.CalcParallelMatrixFloydWarshall(4).ToString());
-        // System.out.println("[CORRECT MATRIX, 1 itr]");
-        // System.out.print(mat.CalcMatrixFloydWarshall().ToString());
-        // System.out.println("[CORRECT SIMPLE METHOD MATRIX]");
-        // System.out.print(mat.CalcSimpleFloydWarshall().ToString());
+        IntMatrix mat = LoadMatrix(inMatFileStr);
+
+        // compute Floyd-Warshall
+        long timeAtStart = System.currentTimeMillis();
+        mat.CalcParallelMatrixFloydWarshall(4);
+        long timeAtEnd = System.currentTimeMillis();
+
+        if (matrixPrint)
+            System.out.println(mat.ToString());
+
+        System.out.println(String.format("Matrix compute time: %dms", timeAtEnd - timeAtStart));
+
+        // compare with test file if needed
+        if (!testMatFileStr.isEmpty())
+        {
+            IntMatrix testMat = LoadMatrix(testMatFileStr);
+            if (mat.equals(testMat))
+            {
+                System.out.println("Test passed!");
+                System.exit(0);
+            }
+            else
+            {
+                System.err.println("Computed matrix differs from test output matrix!");
+                System.exit(1);
+            }
+        }
+    }
+
+    public static void PrintUsageAndExit()
+    {
+        System.out.println("Usage: java Main in_file [options]");
+        System.out.println("Options:");
+        System.out.println("'--test test_file' compares result matrix to matrix in test_file, exit code 1 if fail");
+        System.out.println("'--no-matrix-print' removes result matrix output");
+        System.exit(1);
+    }
+
+    public static IntMatrix LoadMatrix(String fileStr)
+    {
+        File file = new File(fileStr);
+        Scanner scanner = null;
+
+        try
+        {
+            scanner = new Scanner(file);
+        }
+        catch (FileNotFoundException e)
+        {
+            System.err.println("FileNotFoundException: " + e.getMessage());
+            System.exit(1);
+        }
+
+        int n = scanner.nextInt();
+        int mat[][] = new int[n][n];
+
+        for (int i = 0; i < n; ++i)
+        {
+            for (int j = 0; j < n; ++j)
+                mat[i][j] = scanner.nextInt();
+        }
+
+        IntMatrix intMat = new IntMatrix(n, mat);
+
+        return intMat;
     }
 }
 
 class IntMatrix
 {
-    private int _n;
+    private final int _n;
     private int _mat[][];
     private final static int INFINITY = 20000; // Integer.MAX_VALUE leads to overflows
 
-    public IntMatrix(Scanner scanner)
+    public IntMatrix(int n, int mat[][])
     {
-        _n = scanner.nextInt();
-        _mat = new int[_n][_n];
-
-        for (int i = 0; i < _n; ++i)
-        {
-            for (int j = 0; j < _n; ++j)
-                _mat[i][j] = scanner.nextInt();
-        }
+        _n = n;
+        _mat = mat;
     }
-
 
     public String ToString()
     {
@@ -56,6 +129,29 @@ class IntMatrix
         }
 
         return s;
+    }
+
+    @Override
+    public boolean equals(Object obj)
+    {
+        if ((obj instanceof IntMatrix) == false)
+            return false;
+
+        IntMatrix intMat = (IntMatrix)obj;
+
+        if (_n != intMat._n)
+            return false;
+
+        for (int i = 0; i < _n; ++i)
+        {
+            for (int j = 0; j < _n; ++j)
+            {
+                if (_mat[i][j] != intMat._mat[i][j])
+                    return false;
+            }
+        }
+
+        return true;
     }
 
     public IntMatrix CalcSimpleFloydWarshall()
