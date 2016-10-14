@@ -8,6 +8,10 @@ import java.io.FileNotFoundException;
 
 public class Main
 {
+    public static final int ALGO_SIMPLE_FLOYD_WARSHALL = 0;
+    public static final int ALGO_MATRIX_FLOYD_WARSHALL = 1;
+    public static final int ALGO_PARALLEL_MATRIX_FLOYD_WARSHALL = 2;
+
     public static void main(String[] args)
     {
         // missing matrix file arg
@@ -18,11 +22,50 @@ public class Main
         String inMatFileStr = args[0];
         String testMatFileStr = "";
         boolean matrixPrint = true;
+        int algorithm = ALGO_SIMPLE_FLOYD_WARSHALL;
+        int threadCount = 1;
+
         // options
         for (int i = 1; i < args.length; ++i)
         {
             String s = args[i];
-            if (s.startsWith("--test"))
+            if (s.startsWith("--algorithm"))
+            {
+                i += 1; // get chosen algorithm
+                if (i >= args.length) // must have a chosen algorithm
+                    PrintUsageAndExit();
+
+                try
+                {
+                    algorithm = Integer.parseInt(args[i]);
+                }
+                catch (Exception e)
+                {
+                    System.err.println("Exception: " + e.getMessage());
+                    PrintUsageAndExit();
+                }
+
+                // parallel Floyd-Warshall has another param, the number of threads
+                if (algorithm == ALGO_PARALLEL_MATRIX_FLOYD_WARSHALL)
+                {
+                    i += 1;
+                    if (i >= args.length)
+                        PrintUsageAndExit();
+
+                    try
+                    {
+                        threadCount = Integer.parseInt(args[i]);
+                    }
+                    catch (Exception e)
+                    {
+                        System.err.println("Exception: " + e.getMessage());
+                        PrintUsageAndExit();
+                    }
+
+                    assert(threadCount > 0 && threadCount <= 1000);
+                }
+            }
+            else if (s.startsWith("--test"))
             {
                 i += 1; // get test file from next arg
                 if (i >= args.length) // must have another argument
@@ -40,7 +83,24 @@ public class Main
 
         // compute Floyd-Warshall
         long timeAtStart = System.currentTimeMillis();
-        mat.CalcParallelMatrixFloydWarshall(4);
+
+        switch (algorithm)
+        {
+            case ALGO_SIMPLE_FLOYD_WARSHALL:
+                mat.CalcSimpleFloydWarshall();
+                break;
+            case ALGO_MATRIX_FLOYD_WARSHALL:
+                mat.CalcMatrixFloydWarshall();
+                break;
+            case ALGO_PARALLEL_MATRIX_FLOYD_WARSHALL:
+                mat.CalcParallelMatrixFloydWarshall(threadCount);
+                break;
+            default:
+                System.err.println(String.format("Invalid algorithm %d", algorithm));
+                PrintUsageAndExit();
+                break;
+        }
+
         long timeAtEnd = System.currentTimeMillis();
 
         if (matrixPrint)
@@ -71,6 +131,10 @@ public class Main
         System.out.println("Options:");
         System.out.println("'--test test_file' compares result matrix to matrix in test_file, exit code 1 if fail");
         System.out.println("'--no-matrix-print' removes result matrix output");
+        System.out.println("'--algorithm algorithm' uses one of the possible algorithms:");
+        System.out.println(" '0' - Simple Floyd-Warshall, O(n^3)");
+        System.out.println(" '1' - Matrix Floyd-Warshall, O(n^3 log(n))");
+        System.out.println(" '2 threadCount' - Parallel Matrix Floyd-Warshall, depends on thread count - thread count must be a square multiple of n, in order to split the matrix");
         System.exit(1);
     }
 
@@ -186,7 +250,7 @@ class IntMatrix
 
         // new copy to store results
         int matCopy[][] = new int[_n][_n];
-        CopyTo(matCopy);
+        // don't need to initialize the copy, it will be filled in the multiplication
 
         for (int itr = 0; itr < iterations; ++itr)
         {
@@ -197,14 +261,16 @@ class IntMatrix
                 {
                     int result = _mat[i][j];
                     for (int rowCol = 0; rowCol < _n; ++rowCol)
-                        result = Math.min(result, _mat[rowCol][j] + _mat[i][rowCol]);
+                        result = Math.min(result, _mat[i][rowCol] + _mat[rowCol][j]);
 
                     matCopy[i][j] = result;
                 }
             }
+
+            // need to update after *EACH* iteration
+            CopyFrom(matCopy); // update our internal matrix
         }
 
-        CopyFrom(matCopy); // update our internal matrix
         PrepareForOutput();
         return this;
     }
@@ -212,7 +278,6 @@ class IntMatrix
     public IntMatrix CalcParallelMatrixFloydWarshall(int threads)
     {
         PrepareForFloydWarshall();
-
         int q = (int)Math.sqrt(threads);
         assert(q * q == threads);
         assert(_n % q == 0); // we're splitting the matrix[n][n], so q must divide n
